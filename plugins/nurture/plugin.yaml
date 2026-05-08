@@ -1,0 +1,20 @@
+name: nurture
+version: 0.1.0
+description: "Avatar-Hermes device automation plugin. Manages a Python device service (FastAPI + uiautomator2) for Android automation and connects to a community knowledge engine to share recipes and operation graphs."
+author: NousResearch
+kind: standalone
+platforms:
+  - linux
+  - macos
+provides_tools:
+  - nurture_execute
+  - nurture_task_report
+hooks:
+  - pre_llm_call
+  - on_session_start
+  - on_session_end
+pip_dependencies:
+  - httpx>=0.27
+  - PyJWT>=2.8
+  # Phase 1 will add: fastapi, uvicorn, uiautomator2 (lifted from
+  # extensions/nurture/python/requirements.txt)
