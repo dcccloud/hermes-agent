@@ -1,0 +1,112 @@
+{
+  "initial_state": "app_home",
+  "pages": {
+    "app_home": {
+      "name": "推荐 Feed 流（首页）",
+      "description": "抖音启动后的默认页面，包含推荐视频 Feed、朋友和直播入口",
+      "indicators": ["推荐", "朋友", "经验", "直播"],
+      "match_threshold": 2,
+      "priority": 10,
+      "discovery_path": [],
+      "transitions": {
+        "profile": "点击底部导航栏「我」tab",
+        "search_results": "点击顶部搜索图标"
+      }
+    },
+    "video_player": {
+      "name": "视频播放页",
+      "description": "全屏视频播放页面，可以点赞、评论、分享、关注作者",
+      "indicators": ["评论", "分享"],
+      "match_threshold": 1,
+      "priority": 5,
+      "discovery_path": ["app_home"],
+      "transitions": {
+        "app_home": "按返回键",
+        "author_profile": "点击作者头像或昵称"
+      }
+    },
+    "profile": {
+      "name": "个人主页（我）",
+      "description": "当前登录用户的个人主页，显示获赞数、粉丝数、关注数和作品列表",
+      "indicators": ["获赞", "粉丝", "关注", "抖音号", "编辑主页"],
+      "match_threshold": 2,
+      "priority": 30,
+      "discovery_path": ["app_home"],
+      "transitions": {
+        "app_home": "点击底部导航栏「首页」tab",
+        "creator_center": "点击「创作者中心」入口"
+      }
+    },
+    "author_profile": {
+      "name": "他人主页",
+      "description": "其他用户的个人主页，可查看其作品、关注和粉丝",
+      "indicators": ["关注", "粉丝", "获赞", "作品"],
+      "match_threshold": 2,
+      "priority": 15,
+      "discovery_path": ["app_home", "video_player"],
+      "transitions": {
+        "app_home": "按返回键"
+      }
+    },
+    "creator_center": {
+      "name": "创作者中心",
+      "description": "创作者管理中心，提供创作灵感、账号检测、上热门等功能入口",
+      "indicators": ["创作者中心", "创作灵感", "账号检测", "上热门"],
+      "match_threshold": 2,
+      "priority": 50,
+      "discovery_path": ["app_home", "profile"],
+      "transitions": {
+        "profile": "按返回键",
+        "data_center": "点击「数据中心」入口"
+      }
+    },
+    "data_center": {
+      "name": "数据中心（总览页）",
+      "description": "数据中心总览，显示播放量、粉丝数等核心数据指标和趋势",
+      "indicators": ["数据中心", "账号诊断", "经营数据"],
+      "match_threshold": 2,
+      "priority": 40,
+      "discovery_path": ["app_home", "profile", "creator_center"],
+      "transitions": {
+        "creator_center": "按返回键",
+        "content_analysis": "点击「作品分析」tab",
+        "fan_analysis": "点击「粉丝分析」tab"
+      }
+    },
+    "content_analysis": {
+      "name": "作品分析页",
+      "description": "分析每个作品的播放量、点赞、评论、分享等详细数据",
+      "indicators": ["数据中心", "作品分析", "分享"],
+      "match_threshold": 3,
+      "priority": 45,
+      "discovery_path": ["app_home", "profile", "creator_center", "data_center"],
+      "transitions": {
+        "data_center": "点击「总览」tab",
+        "fan_analysis": "点击「粉丝分析」tab"
+      }
+    },
+    "fan_analysis": {
+      "name": "粉丝分析页",
+      "description": "分析粉丝增长趋势、粉丝画像（年龄/性别/地域）和兴趣分布",
+      "indicators": ["数据中心", "粉丝画像", "粉丝兴趣"],
+      "match_threshold": 2,
+      "priority": 45,
+      "discovery_path": ["app_home", "profile", "creator_center", "data_center"],
+      "transitions": {
+        "data_center": "点击「总览」tab",
+        "content_analysis": "点击「作品分析」tab"
+      }
+    },
+    "search_results": {
+      "name": "搜索结果页",
+      "description": "搜索结果展示页面，顶部有搜索输入框，下方按综合、视频、用户等维度筛选",
+      "indicators": ["搜你想搜的", "猜你想搜", "综合", "筛选"],
+      "match_threshold": 2,
+      "priority": 25,
+      "discovery_path": ["app_home"],
+      "transitions": {
+        "app_home": "按返回键"
+      }
+    }
+  }
+}

@@ -1,0 +1,60 @@
+# 星图（抖音星图）Operations 配置
+
+operations:
+  - name: participate_and_enter_task_detail
+    display_name: 参与投稿并进入任务详情页
+    description: 参与投稿弹窗勾选确认 进入任务详情页
+    affiliated_app: xingtu
+    handler_class: operations.xingtu.participate_and_enter_task_detail.XingtuParticipateAndEnterTaskDetailOperation
+    preconditions:
+      - 星图任务页面
+
+  - name: upload_and_publish_video
+    display_name: 上传视频并发布任务
+    description: 上传本地视频并完成发布流程（完整流程，保留用于兼容bak）
+    affiliated_app: xingtu
+    handler_class: operations.xingtu.upload_and_publish_video.XingtuUploadAndPublishVideoOperation
+    parameters:
+      - name: video_title_description_tag
+        required: true
+        type: string
+        description: 视频标题、文案、话题标签（换行分隔）
+    preconditions:
+      - 任务详情页
+
+  - name: upload_select_video
+    display_name: 上传并选择视频
+    description: 点击上传视频，从相册选择视频（步骤1-9）
+    affiliated_app: xingtu
+    handler_class: operations.xingtu.upload_select_video.XingtuUploadSelectVideoOperation
+    preconditions:
+      - 任务详情页
+
+  - name: fill_video_info
+    display_name: 填写视频信息
+    description: 填写视频标题、文案、标签等信息（步骤10-11）
+    affiliated_app: xingtu
+    handler_class: operations.xingtu.fill_video_info.XingtuFillVideoInfoOperation
+    parameters:
+      - name: video_title_description_tag
+        required: true
+        type: string
+        description: 视频标题、文案、话题标签（换行分隔）
+    preconditions:
+      - 视频发布编辑页面
+
+  - name: configure_video_settings
+    display_name: 配置视频高级设置
+    description: 配置高级设置、发文助手声明等（步骤12-15）
+    affiliated_app: xingtu
+    handler_class: operations.xingtu.configure_video_settings.XingtuConfigureVideoSettingsOperation
+    preconditions:
+      - 视频发布编辑页面
+
+  - name: publish_video
+    display_name: 发布视频
+    description: 点击发布按钮，等待视频发布完成（步骤16-18）
+    affiliated_app: xingtu
+    handler_class: operations.xingtu.publish_video.XingtuPublishVideoOperation
+    preconditions:
+      - 视频发布编辑页面

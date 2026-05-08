@@ -1,0 +1,47 @@
+# Avatar-Hermes nurture Python device service dependencies.
+#
+# These are installed into the SAME venv as hermes-agent during Phase 1
+# verification. Phase 3 may move them to an isolated venv if startup
+# size becomes a concern (currently ~150 MB extra). All versions verified
+# against macOS arm64 + Python 3.11 on 2026-05-08.
+#
+# The hermes plugin itself only imports httpx + PyJWT (declared in
+# plugin.yaml's pip_dependencies). The heavy stack below is loaded
+# in the device service subprocess only.
+
+# Core
+pyyaml>=6.0
+loguru>=0.7.0
+pydantic>=2.0.0
+python-dotenv>=1.1.0
+
+# HTTP server
+fastapi>=0.115.0
+uvicorn>=0.34.0
+
+# OpenClaw legacy gateway WebSocket node (still imported by server.py
+# even though Avatar-Hermes uses MCP + HTTP polling instead — see
+# decisions.md ADR-001). Phase 3 may make these optional.
+websockets>=13.0
+cryptography>=42.0
+
+# Android automation
+uiautomator2==3.5.0
+adbutils==2.12.0
+
+# Image processing (perceptual hashing, screenshot crop)
+Pillow>=10.0
+numpy>=1.24
+
+# Aliyun OSS upload (screenshots / videos)
+alibabacloud-oss-v2==1.2.2
+
+# LLM client (server.py uses it for VLM calls and recipe generation)
+openai>=2.9.0
+
+# HTTP client (some operations use it directly)
+requests>=2.31.0
+httpx>=0.27
+
+# Optional (not strictly needed by all operations):
+# pika>=1.3.2,<2.0   # RabbitMQ — only used by worker.py path, not server.py

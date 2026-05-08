@@ -1,0 +1,58 @@
+# 好省短剧 Operations 配置
+
+operations:
+  - name: open_haosheng_app
+    display_name: 打开好省App
+    description: 打开好省App
+    affiliated_app: haosheng
+    handler_class: operations.haosheng.open_app.HaoshengOpenAppOperation
+    preconditions:
+      - 设备主屏幕
+      - 任意页面
+
+  - name: enter_material_tab
+    display_name: 进入素材页签
+    description: 进入好省App的【素材】页签
+    affiliated_app: haosheng
+    handler_class: operations.haosheng.enter_material_tab.HaoshengEnterMaterialTabOperation
+    preconditions:
+      - 好省首页
+      - 好省任意页面
+
+  - name: search_drama
+    display_name: 搜索剧目
+    description: 在素材页签中搜索指定剧目名称
+    affiliated_app: haosheng
+    handler_class: operations.haosheng.search_drama.HaoshengSearchDramaOperation
+    parameters:
+      - name: drama_name
+        required: true
+        type: string
+        description: 要搜索的剧目名称
+    preconditions:
+      - 素材页签
+      - 搜索页面
+
+  - name: filter_native_drama
+    display_name: 筛选端原生剧目
+    description: 在搜索结果中筛选出端原生类型的剧目
+    affiliated_app: haosheng
+    handler_class: operations.haosheng.filter_native_drama.HaoshengFilterNativeDramaOperation
+    preconditions:
+      - 搜索结果页
+
+  - name: select_first_task
+    display_name: 选择第一个任务
+    description: 从任务列表中选择第一个任务进入详情页
+    affiliated_app: haosheng
+    handler_class: operations.haosheng.select_first_task.HaoshengSelectFirstTaskOperation
+    preconditions:
+      - 任务列表页
+
+  - name: apply_and_create_promotion
+    display_name: 申请推广并创建推广
+    description: 申请推广并创建推广，最后跳转到抖音星图
+    affiliated_app: haosheng
+    handler_class: operations.haosheng.apply_promotion.HaoshengApplyAndCreatePromotionOperation
+    preconditions:
+      - 任务详情页

@@ -1,0 +1,56 @@
+# Development configuration for OperationEngine.
+#
+# IMPORTANT: api_key fields are intentionally empty in the committed
+# version. Populate them locally before running the device service:
+#
+#   1. Copy this file to dev.local.yaml (gitignored)
+#   2. Set APP_ENV=dev.local before starting server.py
+#
+# Or directly edit this file and avoid committing the change:
+#   git update-index --skip-worktree plugins/nurture/python/openclaw_agent/config/dev.yaml
+#
+# Each missing api_key disables the corresponding feature gracefully:
+#   - autoglm:    no AutoGLM phone control (rare path)
+#   - vision_read: VLM fallback unavailable (only deterministic recipes work)
+#   - recipe_gen: no auto-generated recipes from VLM traces
+#   - drama_check: no scene-change detection in long-form content
+app:
+  name: operation-engine
+  version: "1.0.0"
+  environment: dev
+  debug: true
+
+logging:
+  level: DEBUG
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}"
+  file: logs/operation_engine.log
+
+autoglm:
+  base_url: https://open.bigmodel.cn/api/paas/v4
+  api_key: ""
+  model_name: autoglm-phone
+  max_steps: 20
+  temperature: 0.2
+
+drama_check:
+  model_name: gpt-5.4-mini
+  api_key: ""
+  base_url: "https://api.apimart.ai/v1"
+
+vision_read:
+  model_name: qwen3.6-plus
+  api_key: ""
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+recipe_gen:
+  model_name: claude-opus-4-7
+  api_key: ""
+  base_url: "https://www.packyapi.com/v1"
+
+devices:
+  connection_timeout: 30
+  max_retries: 3
+
+executor:
+  workers: 2
+  operation_timeout: 300

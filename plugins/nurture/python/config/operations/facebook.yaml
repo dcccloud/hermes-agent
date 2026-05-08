@@ -1,0 +1,71 @@
+# Facebook Operations 配置
+#
+# 顶部 `app:` 块是 app-level metadata，所有该 namespace 下的 operation
+# (无论是这个 yaml 里显式声明的 open_app/do，还是日后 task_name 学出的
+# recipe-derived op 如 facebook.find_liked_videos)，server.py 都会按
+# `<app>.<op>` 自动注入 _target_app / _target_app_package /
+# _target_app_ui_hints，从而触发 entry guard / VLM prompt 约束 / exit
+# verify。
+#
+# MVP 策略：
+#   - open_app  写死的 deterministic 启动（5 行 Python，比让 VLM 找图标稳）
+#   - do        万能 VLM 入口，agent 用自然语言描述要做什么
+#               成功一次后 trace → recipe，下次同 task_name 直接走 recipe
+
+app:
+  name: facebook
+  package: com.facebook.katana
+  # VLM 抗幻觉提示：列出 Facebook UI 上的英文标签，让训练数据偏中文的
+  # VLM 看到这些不要误以为是别的 app。前 10 条会被注入 prompt。
+  ui_hints:
+    - News Feed
+    - Reels
+    - Stories
+    - Marketplace
+    - Groups
+    - Watch
+    - Saved
+    - Liked
+    - Pages
+    - Memories
+    - Friends
+    - Notifications
+
+operations:
+  - name: open_app
+    display_name: 打开 Facebook
+    description: 冷启动 Facebook 主程序到主页
+    affiliated_app: facebook
+    handler_class: operations.facebook.open_app.FacebookOpenAppOperation
+    preconditions:
+      - 设备主屏幕
+      - 任意页面
+
+  - name: do
+    display_name: Facebook 任意操作
+    description: |
+      通过 VLM 在 Facebook 上完成自然语言描述的任务（点赞 / 浏览 /
+      评论 / 关注等等）。首次执行用 VLM 探索；同一个 task_name 的
+      下一次执行会自动用学到的 recipe，更快更稳。
+    affiliated_app: facebook
+    handler_class: operations.generic_vlm_task.GenericVlmTaskOperation
+    parameters:
+      - name: task_prompt
+        required: true
+        type: string
+        description: 用自然语言描述要做的事，例如「在主页给最新一条动态点赞」
+      - name: task_name
+        required: false
+        type: string
+        description: |
+          这个动作的 slug（如 like_top_post / scroll_feed）。决定了
+          recipe 的存储路径，相同 name 的第二次执行会命中缓存的
+          recipe。强烈建议每次都传一个稳定且语义清晰的名字。
+      - name: verify_prompt
+        required: false
+        type: string
+        description: |
+          可选的验收问题。VLM 在执行完后会被问这个问题，回答里包含
+          "yes" 才视为成功。例：「当前帖子是否已显示为已点赞？」
+    preconditions:
+      - Facebook 任意页面
