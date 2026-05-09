@@ -39,9 +39,20 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     create_p.add_argument("--description", required=True)
     create_p.add_argument("--priority", default="normal", choices=("normal", "high"))
 
-    serve_p = subs.add_parser("serve", help="Start FastAPI + MCP server (Phase 2 dev)")
+    serve_p = subs.add_parser(
+        "serve",
+        help="Run the community FastAPI + MCP server in the foreground",
+    )
     serve_p.add_argument("--host", default="127.0.0.1")
     serve_p.add_argument("--port", type=int, default=18790)
+    serve_p.add_argument(
+        "--workspace", default=None,
+        help="Workspace dir (defaults to $HERMES_HOME/nurture-community/)",
+    )
+    serve_p.add_argument(
+        "--database-url", default=None,
+        help="PostgreSQL DSN (omit for JSON file backend)",
+    )
 
     analyze_p = subs.add_parser(
         "analyze",
@@ -86,8 +97,7 @@ def community_command(args: argparse.Namespace) -> int:
         print("nurture-community tasks: not yet implemented (Phase 2-3)")
         return 1
     if cmd == "serve":
-        print("nurture-community serve: not yet implemented (Phase 2)")
-        return 1
+        return _cmd_serve(args)
     if cmd == "analyze":
         return _cmd_analyze(args)
     if cmd == "report":
@@ -103,6 +113,101 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print("  FastAPI :18790:  not yet started (Phase 2)")
     print("  KnowledgeEngine: not yet initialised (Phase 2)")
     print("  MCP server:      not yet exposed (Phase 3)")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Run the community FastAPI + MCP server in the foreground.
+
+    Bootstraps the same path the plugin's on_session_start hook uses,
+    then blocks on SIGINT/SIGTERM. Use this from shell scripts /
+    systemd / launchd / Docker without needing hermes session start.
+    """
+    import asyncio
+    import logging
+    import os
+    import signal
+    import threading
+
+    from .auth import JwtAuth
+    from .avatar_registry import AvatarRegistry
+    from .community_server import create_app
+    from .knowledge_engine import KnowledgeEngine
+
+    logging.basicConfig(
+        level=os.environ.get("NURTURE_LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    )
+    log = logging.getLogger("nurture-community.serve")
+
+    # Workspace + DB resolution mirrors plugins/nurture-community/__init__.py
+    from hermes_constants import get_hermes_home
+
+    workspace = (
+        args.workspace
+        and __import__("pathlib").Path(args.workspace).expanduser().resolve()
+    ) or os.environ.get("NURTURE_COMMUNITY_WORKSPACE")
+    if not workspace:
+        workspace = get_hermes_home() / "nurture-community"
+    else:
+        from pathlib import Path
+        workspace = Path(workspace).expanduser().resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / "knowledge").mkdir(parents=True, exist_ok=True)
+    (workspace / "secrets").mkdir(parents=True, exist_ok=True)
+
+    db_url = (
+        args.database_url
+        or os.environ.get("NURTURE_COMMUNITY_DATABASE_URL")
+        or None
+    )
+
+    engine = KnowledgeEngine(database_url=db_url, store_dir=workspace / "knowledge")
+    auth = JwtAuth(workspace / "secrets")
+    registry = AvatarRegistry()
+
+    log.info(
+        "nurture-community serve: workspace=%s db=%s",
+        workspace, "PG" if db_url else "JSON",
+    )
+
+    async def main() -> None:
+        await engine.init()
+        app = create_app(
+            knowledge_engine=engine, auth=auth, avatar_registry=registry,
+        )
+        # Optional: mount MCP under /mcp
+        try:
+            from .mcp_server import create_mcp_server
+            mcp = create_mcp_server(engine)
+            app.mount("/mcp", mcp.streamable_http_app())
+            log.info("MCP server mounted at /mcp")
+        except Exception as e:
+            log.warning("MCP server unavailable: %s — REST endpoints still work", e)
+
+        import uvicorn
+        config = uvicorn.Config(
+            app=app,
+            host=args.host, port=args.port,
+            log_level=os.environ.get("NURTURE_LOG_LEVEL", "info").lower(),
+        )
+        server = uvicorn.Server(config)
+
+        # Graceful shutdown on SIGTERM/SIGINT
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            try:
+                loop.add_signal_handler(
+                    sig, lambda: setattr(server, "should_exit", True)
+                )
+            except (NotImplementedError, AttributeError):
+                pass
+
+        log.info("nurture-community serve: listening on %s:%d", args.host, args.port)
+        await server.serve()
+        await engine.close()
+
+    asyncio.run(main())
     return 0
 
 

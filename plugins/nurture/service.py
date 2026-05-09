@@ -16,6 +16,7 @@ import atexit
 import logging
 import os
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -140,8 +141,16 @@ def start_python_service(config: NurtureConfig) -> bool:
             )
             return False
 
+        # Default to the parent interpreter (sys.executable) since the
+        # Python device service deps are installed in the same venv as
+        # hermes itself. Operators can override via plugins.nurture.pythonPath
+        # if they want a separate conda env or system python.
+        python_path = config.python_path
+        if not python_path or python_path == "python3":
+            python_path = sys.executable
+
         args = [
-            config.python_path,
+            python_path,
             str(server_script),
             "--host", config.server_host,
             "--port", str(config.server_port),

@@ -40,6 +40,17 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     migrate_p.add_argument("--skip-recipes", action="store_true")
     migrate_p.add_argument("--app", default=None, help="Migrate only one app")
 
+    serve_p = subs.add_parser(
+        "serve",
+        help="Run the device-side nurture stack in the foreground "
+             "(Python device service + community connector). Use this "
+             "from shell scripts / systemd / launchd / Docker.",
+    )
+    serve_p.add_argument(
+        "--no-community", action="store_true",
+        help="Skip community connector even if community.url is configured",
+    )
+
     init_w = subs.add_parser(
         "init-worker",
         help="Pre-set the nurture-task-worker profile so the kanban "
@@ -69,6 +80,8 @@ def nurture_command(args: argparse.Namespace) -> int:
         return _cmd_migrate(args)
     if cmd == "init-worker":
         return _cmd_init_worker(args)
+    if cmd == "serve":
+        return _cmd_serve(args)
     print(f"hermes nurture: unknown subcommand {cmd!r}")
     return 2
 
@@ -196,6 +209,80 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
         print()
         print("✓ Validation passed.")
 
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Run the device-side stack (Python service + connector) in foreground.
+
+    Mirrors plugins/nurture/__init__.py register() / on_session_start
+    wiring but blocks on SIGINT/SIGTERM. Lets the user run the device
+    side without an interactive hermes REPL or messaging gateway.
+    """
+    import logging
+    import os
+    import signal
+    import threading
+
+    from .community_connector import CommunityConnector
+    from .config import NurtureConfig
+    from .device_bridge import DeviceBridge
+    from .service import start_python_service, stop_python_service
+
+    logging.basicConfig(
+        level=os.environ.get("NURTURE_LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    )
+    log = logging.getLogger("nurture.serve")
+
+    config = NurtureConfig.load()
+    if not config.enabled:
+        log.error("nurture serve: plugin disabled in config")
+        return 1
+
+    # 1. Spawn Python device service (idempotent)
+    if not start_python_service(config):
+        log.warning("nurture serve: Python service did not start; check logs")
+        return 1
+
+    # 2. Build bridge + (optionally) start community connector
+    bridge = DeviceBridge(config.server_host, config.server_port)
+    connector = None
+    if config.community.url and not args.no_community:
+        connector = CommunityConnector(config, bridge)
+        connector.start()
+        log.info("nurture serve: community connector started")
+    else:
+        log.info(
+            "nurture serve: community connector skipped (url=%s, no_community=%s)",
+            bool(config.community.url), args.no_community,
+        )
+
+    # 3. Block on SIGINT/SIGTERM
+    log.info(
+        "nurture serve: device service ready on %s:%d, "
+        "device=%s, workspace=%s. Ctrl+C to stop.",
+        config.server_host, config.server_port,
+        config.device_id or "auto",
+        config.workspace_path,
+    )
+    stop_event = threading.Event()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, lambda *_: stop_event.set())
+        except ValueError:
+            pass
+
+    try:
+        stop_event.wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if connector is not None:
+            connector.stop()
+        stop_python_service()
+        bridge.close()
+        log.info("nurture serve: stopped")
     return 0
 
 
