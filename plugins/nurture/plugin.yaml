@@ -1,5 +1,5 @@
 name: nurture
-version: 0.2.0
+version: 0.3.0
 description: "Avatar-Hermes device automation plugin. Manages a Python device service (FastAPI + uiautomator2) for Android automation and connects to a community knowledge engine to share recipes and operation graphs."
 author: NousResearch
 kind: standalone
@@ -14,10 +14,10 @@ hooks:
   - on_session_start
   - on_session_end
 # Hermes plugin loader resolves these via pip into the active venv.
-# The hermes plugin itself only needs httpx + PyJWT — the heavy device
-# automation stack (uiautomator2, fastapi, ...) is installed for the
-# Python device service from python/requirements.txt and runs in its own
-# subprocess, so we don't bloat the main hermes import path.
+# The hermes plugin itself uses httpx + PyJWT for the community connector
+# and Bearer-token-based REST polling. The heavy device automation stack
+# (uiautomator2, fastapi, ...) is installed for the Python device service
+# from python/requirements.txt and runs in its own subprocess.
 pip_dependencies:
   - httpx>=0.27
   - PyJWT>=2.8

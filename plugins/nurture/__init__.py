@@ -1,22 +1,22 @@
 """nurture plugin — Avatar-Hermes device automation.
 
-Phase 1: Python device service spawn, two tools (nurture_execute,
-nurture_task_report), and pre_llm_call context injection.
+Phase 3: Python device service spawn + 2 tools + pre_llm_call hook +
+community connector (MCP client + REST polling background thread).
 
 Design: see ``docs/avatar-hermes/`` (README, decisions, boundary-contracts,
 device-agent, mcp-http-protocol).
 
-Phase 3 will add: MCP client to community + REST polling background thread.
 Phase 4 will add: Kanban worker bridge for community task execution.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from .cli import register_cli as _register_nurture_cli
 from .cli import nurture_command as _nurture_command
 from .cli import slash_handler as _slash_handler
+from .community_connector import CommunityConnector
 from .config import NurtureConfig
 from .device_bridge import DeviceBridge
 from .device_tools import (
@@ -34,12 +34,13 @@ logger = logging.getLogger(__name__)
 
 
 # Module-level singletons set on first session start. Re-used across
-# sessions to share the bridge HTTP client + capability cache.
+# sessions to share the bridge HTTP client + capability cache + connector.
 _state: dict[str, Any] = {
     "config": None,
     "bridge": None,
     "cap_provider": None,
     "persona_provider": None,
+    "connector": None,
     "started": False,
 }
 
@@ -54,11 +55,11 @@ def _ensure_state(config: NurtureConfig) -> None:
 
 
 def _on_session_start(**_kwargs: Any) -> None:
-    """Spawn Python device service (idempotent — singleton).
+    """Spawn Python device service + community connector (idempotent).
 
     Errors are logged but don't fail session start. The plugin degrades
-    gracefully: tools will return error JSON and the prompt hook will
-    inject a "service starting" placeholder.
+    gracefully: tools return error JSON, prompt hook injects a "starting"
+    placeholder, connector retries on each tick.
     """
     config = _state["config"]
     if config is None:
@@ -68,9 +69,17 @@ def _on_session_start(**_kwargs: Any) -> None:
         return  # idempotent
     try:
         start_python_service(config)
-        _state["started"] = True
     except Exception as e:
         logger.error("nurture: failed to start Python service: %s", e)
+
+    # Start community connector (background thread) if community.url configured
+    connector = _state.get("connector")
+    if connector is not None:
+        try:
+            connector.start()
+        except Exception as e:
+            logger.error("nurture: failed to start community connector: %s", e)
+    _state["started"] = True
 
 
 def _on_session_end(**_kwargs: Any) -> None:
@@ -101,6 +110,12 @@ def register(ctx) -> None:
     cap_provider: CachedCapabilityProvider = _state["cap_provider"]
     persona_provider: CachedPersonaProvider = _state["persona_provider"]
 
+    # Community connector (Phase 3). Created here, started in on_session_start.
+    connector: Optional[CommunityConnector] = None
+    if config.community.url:
+        connector = CommunityConnector(config, bridge)
+        _state["connector"] = connector
+
     logger.info(
         "nurture plugin loaded (workspace=%s, device=%s, server=%s:%d, community=%s)",
         config.workspace_path,
@@ -120,13 +135,13 @@ def register(ctx) -> None:
         handler=make_nurture_execute_handler(bridge, bound_device),
     )
 
+    # Phase 3: forward task outcomes to /api/task/complete via the connector.
+    forward_fn = connector.forward_task_outcome if connector is not None else None
     ctx.register_tool(
         name="nurture_task_report",
         toolset="nurture",
         schema=NURTURE_TASK_REPORT_SCHEMA,
-        # Phase 1: forward_fn=None (no community wiring yet).
-        # Phase 3+ will pass a forwarder that posts to /api/task/complete.
-        handler=make_nurture_task_report_handler(forward_fn=None),
+        handler=make_nurture_task_report_handler(forward_fn=forward_fn),
     )
 
     # -- hooks --------------------------------------------------------------

@@ -1,5 +1,5 @@
 name: nurture-community
-version: 0.1.0
+version: 0.3.0
 description: "Avatar-Hermes community knowledge engine. Aggregates recipes/graph/traces/events from many devices, fuses best practices, and dispatches tasks/advices/directives. Companion to the `nurture` plugin: deploy this on a community Hermes instance, point devices at it via plugins.nurture.community.url."
 author: NousResearch
 kind: standalone
@@ -11,4 +11,10 @@ hooks:
   - on_session_end
 pip_dependencies:
   - PyJWT>=2.8
-  # Phase 2-3 will add: fastapi, uvicorn, asyncpg, mcp (server), httpx
+  - cryptography>=42.0
+  - fastapi>=0.115
+  - uvicorn>=0.34
+  - mcp>=1.0
+  - httpx>=0.27
+  # asyncpg only used when databaseUrl is set (PG backend).
+  - asyncpg>=0.30
