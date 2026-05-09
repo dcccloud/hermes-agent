@@ -111,10 +111,92 @@ def _cmd_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_migrate(args: argparse.Namespace) -> int:
-    print("nurture migrate: not yet implemented (lands in Phase 6)")
-    print(f"  source:    {args.source}")
-    print(f"  dry-run:   {args.dry_run}")
-    return 1
+    """OpenClaw → Avatar-Hermes data migration. Pure file copy."""
+    from .config import NurtureConfig
+    from .migrate import build_plan, execute_plan, expand_user, validate_migration
+
+    source = expand_user(args.source)
+    if not source.exists():
+        print(f"nurture migrate: source {source} does not exist")
+        return 1
+
+    config = NurtureConfig.load()
+    dest = config.workspace_path
+    dest.mkdir(parents=True, exist_ok=True)
+
+    plan = build_plan(
+        source, dest,
+        skip_recipes=getattr(args, "skip_recipes", False),
+        only_app=getattr(args, "app", None),
+    )
+
+    print(f"nurture migrate")
+    print(f"  source:        {source}")
+    print(f"  dest:          {dest}")
+    print(f"  items planned: {plan.total_items()}")
+    if plan.skipped_apps:
+        print(f"  skipped apps:  {', '.join(plan.skipped_apps)}")
+
+    if not plan.mappings:
+        print()
+        print("Nothing to migrate.")
+        return 0
+
+    if plan.conflicts and not args.overwrite:
+        print()
+        print(f"  ⚠ {len(plan.conflicts)} item(s) already exist at the destination:")
+        for c in plan.conflicts[:5]:
+            print(f"    {c}")
+        if len(plan.conflicts) > 5:
+            print(f"    ... and {len(plan.conflicts) - 5} more")
+        print()
+        print("Pass --overwrite to replace, or --dry-run to inspect first.")
+        return 1
+
+    if args.dry_run:
+        print()
+        print("Dry run — would copy:")
+        # Group by category for compact output
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for m in plan.mappings:
+            groups[m.category].append(m)
+        for category, mappings in sorted(groups.items()):
+            print(f"  {category}: {len(mappings)} item(s)")
+            for m in mappings[:3]:
+                print(f"    {m.source.name}")
+            if len(mappings) > 3:
+                print(f"    ... and {len(mappings) - 3} more")
+        return 0
+
+    result = execute_plan(plan, overwrite=args.overwrite)
+    print()
+    print(f"  copied:        {result.items_copied}")
+    print(f"  skipped:       {result.items_skipped}")
+    print(f"  failed:        {result.items_failed}")
+    print(f"  bytes:         {result.bytes_copied:,}")
+
+    if result.failures:
+        print()
+        print("Failures:")
+        for f in result.failures[:10]:
+            print(f"  {f}")
+        return 1
+
+    # Validate
+    warnings = validate_migration(dest)
+    if warnings:
+        print()
+        print("⚠ Validation warnings (non-fatal):")
+        for w in warnings[:10]:
+            print(f"  {w}")
+        if len(warnings) > 10:
+            print(f"  ... and {len(warnings) - 10} more")
+    else:
+        print()
+        print("✓ Validation passed.")
+
+    return 0
 
 
 def _cmd_init_worker(args: argparse.Namespace) -> int:

@@ -2,6 +2,20 @@
 
 OpenClaw nurture/nurture-community 体系在 Hermes-Agent 框架上的对等实现。
 
+## 实施状态
+
+| Phase | 内容 | 状态 |
+|---|---|---|
+| 0 | 双插件脚手架 + 13 篇 design doc | ✓ |
+| 1 | 设备侧 Python lift + tools + pre_llm_call hook | ✓ |
+| 2 | 7 大社区 store JSON + PG 双后端翻译 | ✓ |
+| 3 | MCP + HTTP polling 协议层 | ✓ |
+| 4 | Kanban worker 任务系统 | ✓ |
+| 5 | Layer 2 MVP — analytics + 周报 + Langfuse | ✓ |
+| 6 | OpenClaw → Hermes 迁移工具 | ✓ |
+
+测试覆盖:33 passed, 1 skipped(admin endpoints stub)。设备侧 + 社区侧 + 协议层 + Kanban 桥 + Analytics + 迁移全链路测试通过。
+
 ---
 
 ## 文档索引
