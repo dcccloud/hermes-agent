@@ -40,6 +40,20 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
     migrate_p.add_argument("--skip-recipes", action="store_true")
     migrate_p.add_argument("--app", default=None, help="Migrate only one app")
 
+    init_w = subs.add_parser(
+        "init-worker",
+        help="Pre-set the nurture-task-worker profile so the kanban "
+             "dispatcher can spawn workers (Phase 4)",
+    )
+    init_w.add_argument(
+        "--profile", default="nurture-task-worker",
+        help="Profile name to create / update (default: nurture-task-worker)",
+    )
+    init_w.add_argument(
+        "--force", action="store_true",
+        help="Overwrite an existing profile",
+    )
+
 
 def nurture_command(args: argparse.Namespace) -> int:
     """Dispatch ``hermes nurture <subcommand>`` (when argparse gets fixed)."""
@@ -53,6 +67,8 @@ def nurture_command(args: argparse.Namespace) -> int:
         return _cmd_list(args)
     if cmd == "migrate":
         return _cmd_migrate(args)
+    if cmd == "init-worker":
+        return _cmd_init_worker(args)
     print(f"hermes nurture: unknown subcommand {cmd!r}")
     return 2
 
@@ -99,6 +115,62 @@ def _cmd_migrate(args: argparse.Namespace) -> int:
     print(f"  source:    {args.source}")
     print(f"  dry-run:   {args.dry_run}")
     return 1
+
+
+def _cmd_init_worker(args: argparse.Namespace) -> int:
+    """Create / update the nurture-task-worker hermes profile.
+
+    The profile is the target of kanban_create's ``assignee`` field:
+    when the dispatcher sees a task assigned to ``nurture-task-worker``,
+    it spawns a hermes process with that profile, which loads the
+    nurture plugin and gets a Pi Agent ready to execute device ops.
+    """
+    profile = args.profile
+    force = args.force
+    try:
+        from hermes_constants import get_hermes_home
+    except ImportError as e:
+        print(f"hermes_constants unavailable: {e}")
+        return 1
+
+    profile_dir = get_hermes_home().parent / ".hermes" / "profiles" / profile
+    profile_dir = profile_dir.expanduser()
+    if profile_dir.exists() and not force:
+        print(f"nurture init-worker: profile {profile!r} already exists at {profile_dir}")
+        print("  Pass --force to overwrite.")
+        return 0
+
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    config_path = profile_dir / "config.yaml"
+    config_path.write_text(_DEFAULT_WORKER_PROFILE_YAML, encoding="utf-8")
+    print(f"nurture init-worker: profile {profile!r} ready at {profile_dir}")
+    print(f"  config:  {config_path}")
+    print()
+    print("Next step: enable the plugin in this profile (or copy your")
+    print("  main config's `plugins.enabled` list manually):")
+    print(f"  hermes --profile {profile} plugins enable nurture")
+    print()
+    print("Then point your community plugin at this profile:")
+    print(f"  hermes config set plugins.nurture.community.workerProfile {profile}")
+    return 0
+
+
+_DEFAULT_WORKER_PROFILE_YAML = """# nurture-task-worker hermes profile
+#
+# This profile is spawned by the kanban dispatcher when a community task
+# arrives. The plugin must be enabled here (or via `hermes --profile
+# nurture-task-worker plugins enable nurture`).
+#
+# delegation.subagent_auto_approve avoids prompting on every nurture_execute
+# call — workers are non-interactive.
+
+plugins:
+  enabled:
+    - nurture
+
+delegation:
+  subagent_auto_approve: true
+"""
 
 
 # ---------------------------------------------------------------------------

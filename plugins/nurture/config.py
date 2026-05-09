@@ -24,6 +24,9 @@ class CommunityConfig:
     password: str = ""
     poll_interval_caps_ms: int = 60_000
     poll_interval_task_ms: int = 30_000
+    # Phase 4: hermes profile that picks up community tasks from kanban.
+    # Empty string falls back to "nurture-task-worker".
+    worker_profile: str = ""
 
 
 @dataclass
@@ -86,6 +89,7 @@ class NurtureConfig:
             poll_interval_task_ms=_as_positive_int(
                 comm_section.get("pollIntervalTaskMs"), default=30_000, minimum=5_000
             ),
+            worker_profile=_as_str_or_empty(comm_section.get("workerProfile")),
         )
 
         return cls(

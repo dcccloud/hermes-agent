@@ -34,6 +34,7 @@ from .community_sync import (
 from .community_token import CommunityToken, TokenStore, ensure_token
 from .config import NurtureConfig
 from .device_bridge import DeviceBridge
+from .kanban_bridge import maybe_dispatch_new_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -280,6 +281,28 @@ class CommunityConnector:
         )
         if result is None:
             self._token = None  # will trigger refresh on next tick if 401
+            return
+
+        # Phase 4: dispatch any newly-arrived community tasks to Kanban
+        # so a worker hermes profile picks them up. The bridge is
+        # idempotent (idempotency_key=nurture-task-<id>) so re-poll
+        # without status reset is a no-op.
+        try:
+            tasks_file = self._config.workspace_path / "agent" / "community-tasks.json"
+            dispatched = maybe_dispatch_new_tasks(
+                tasks_file,
+                worker_profile=(
+                    self._config.community.worker_profile
+                    or "nurture-task-worker"
+                ),
+            )
+            if dispatched:
+                logger.info(
+                    "nurture: dispatched %d new community task(s) to Kanban",
+                    dispatched,
+                )
+        except Exception as e:
+            logger.warning("nurture: kanban dispatch failed: %s", e)
 
     def _poll_advices(self) -> None:
         if self._token is None:
