@@ -1,0 +1,252 @@
+# 抖音 Operations 配置
+
+operations:
+  - name: enter_recommend_feed
+    display_name: 进入推荐流
+    description: 打开抖音并进入推荐流
+    affiliated_app: douyin
+    handler_class: operations.douyin.enter_recommend_feed.EnterRecommendFeedOperation
+    preconditions: []
+
+  - name: swipe_to_next_video
+    display_name: 滑动到下一个视频
+    description: 向上滑动切换到下一个推荐视频（支持连续滑动或查找特定内容）
+    affiliated_app: douyin
+    handler_class: operations.douyin.swipe_to_next_video.SwipeToNextVideoOperation
+    state_checks:
+      precondition:
+        app_running: douyin
+      postcondition: {}
+    parameters:
+      - name: count
+        required: false
+        type: integer
+        description: 滑动次数，默认 1。简单刷视频只需设置此参数
+      - name: watch_duration
+        required: false
+        type: number
+        description: 每个视频观看时长（秒），默认 5。设为 null 则快速浏览
+      - name: target_content_type
+        required: false
+        type: string
+        description: 目标内容类型。null=按count次数滑动, "video"=查找普通视频, "drama"=查找短剧, 其他任意字符串=自定义类型（会把该字符串传给大模型判断是否命中）。大多数场景不需要设置
+      - name: target_action
+        required: false
+        type: string
+        description: 目标动作（仅当 target_content_type 设置时生效）。"like"=查找可点赞内容, "follow"=查找可关注内容
+      - name: max_swipes
+        required: false
+        type: integer
+        description: 查找模式最多滑动次数，默认 8（仅当 target_content_type 设置时生效）
+    preconditions:
+      - 推荐流
+      - 视频播放页
+
+  - name: watch_video
+    display_name: 观看视频
+    description: 观看当前视频指定时长
+    affiliated_app: douyin
+    handler_class: operations.douyin.watch_video.WatchVideoOperation
+    state_checks:
+      precondition:
+        feed_type: video
+      postcondition:
+        feed_type: video
+    parameters:
+      - name: duration_seconds
+        required: true
+        type: integer
+        description: 观看时长（秒）
+    preconditions:
+      - 推荐流
+      - 视频播放页
+
+  - name: give_a_like
+    display_name: 点赞
+    description: 点赞当前视频
+    affiliated_app: douyin
+    handler_class: operations.douyin.give_a_like.DouyinGiveALikeOperation
+    state_checks:
+      precondition:
+        feed_type: video
+        like_status: not_liked
+      postcondition:
+        feed_type: video
+        like_status: liked
+    preconditions:
+      - 推荐流
+      - 视频播放页
+
+  - name: post_comment
+    display_name: 发布评论
+    description: 发布评论到当前视频
+    affiliated_app: douyin
+    handler_class: operations.douyin.post_comment.PostCommentOperation
+    state_checks:
+      precondition:
+        feed_type: video
+      postcondition:
+        feed_type: video
+    parameters:
+      - name: comment
+        required: true
+        type: string
+        description: 评论内容
+    preconditions:
+      - 推荐流
+      - 视频播放页
+
+  - name: enter_author_profile
+    display_name: 进入作者主页
+    description: 点击作者头像进入作者主页
+    affiliated_app: douyin
+    handler_class: operations.douyin.enter_author_profile.EnterAuthorProfileOperation
+    state_checks:
+      precondition:
+        feed_type: video
+      postcondition:
+        page_type: author_profile
+    preconditions:
+      - 视频播放页
+
+  - name: follow_author
+    display_name: 关注作者
+    description: 关注当前视频的作者
+    affiliated_app: douyin
+    handler_class: operations.douyin.follow_author.FollowAuthorOperation
+    state_checks:
+      precondition:
+        feed_type: video
+        follow_status: can_follow
+      postcondition:
+        follow_status: already_followed
+    preconditions:
+      - 视频播放页
+
+  - name: exit_author_profile
+    display_name: 退出作者主页
+    description: 退出作者主页返回推荐流
+    affiliated_app: douyin
+    handler_class: operations.douyin.exit_author_profile.ExitAuthorProfileOperation
+    state_checks:
+      precondition:
+        page_type: author_profile
+      postcondition:
+        feed_type: video
+    preconditions:
+      - 作者主页
+
+  - name: share_to_wechat
+    display_name: 分享给微信好友
+    description: 分享当前视频给指定微信好友
+    affiliated_app: douyin
+    handler_class: operations.douyin.share_to_wechat.ShareToWechatOperation
+    state_checks:
+      precondition:
+        feed_type: video
+      postcondition:
+        feed_type: video
+    parameters:
+      - name: friend_name
+        required: true
+        type: string
+        description: 微信好友名称
+    preconditions:
+      - 视频播放页
+
+  - name: view_my_profile
+    display_name: 查看我的主页
+    description: 点击底部"我"tab进入个人主页查看 profile
+    affiliated_app: douyin
+    handler_class: operations.douyin.view_my_profile.ViewMyProfileOperation
+    state_checks:
+      precondition: {}
+      postcondition:
+        page_type: my_profile
+    preconditions: []
+
+  - name: enter_data_center
+    display_name: 进入数据中心
+    description: 从"我"页面导航到创作者中心 > 数据中心
+    affiliated_app: douyin
+    handler_class: operations.douyin.enter_data_center.EnterDataCenterOperation
+    state_checks:
+      precondition: {}
+      postcondition:
+        page_type: data_center
+    preconditions: []
+
+  - name: scrape_overview
+    display_name: 采集数据中心总览
+    description: 采集数据中心「总览」分页的所有统计数据
+    affiliated_app: douyin
+    handler_class: operations.douyin.scrape_overview.ScrapeOverviewOperation
+    state_checks:
+      precondition:
+        page_type: data_center
+      postcondition: {}
+    preconditions:
+      - 数据中心
+
+  - name: scrape_content_analysis
+    display_name: 采集作品分析
+    description: 采集数据中心「作品分析」分页的作品列表数据
+    affiliated_app: douyin
+    handler_class: operations.douyin.scrape_content_analysis.ScrapeContentAnalysisOperation
+    state_checks:
+      precondition:
+        page_type: data_center
+      postcondition: {}
+    parameters:
+      - name: max_items
+        required: false
+        type: integer
+        description: 最多采集的作品数量，默认 10
+    preconditions:
+      - 数据中心
+
+  - name: scrape_fan_analysis
+    display_name: 采集粉丝分析
+    description: 采集数据中心「粉丝分析」分页下三个子分页（粉丝分析/粉丝画像/粉丝兴趣）的完整数据
+    affiliated_app: douyin
+    handler_class: operations.douyin.scrape_fan_analysis.ScrapeFanAnalysisOperation
+    state_checks:
+      precondition:
+        page_type: data_center
+      postcondition: {}
+    preconditions:
+      - 数据中心
+
+  - name: trigger_search
+    display_name: 触发搜索
+    description: 触发抖音搜索功能并输入搜索内容
+    affiliated_app: douyin
+    handler_class: operations.douyin.trigger_search.TriggerSearchOperation
+    state_checks:
+      precondition: {}
+      postcondition:
+        page_type: search_results
+    parameters:
+      - name: search_keyword
+        required: true
+        type: string
+        description: 搜索关键词
+    preconditions:
+      - 抖音主页或视频页
+
+  - name: select_search_result
+    display_name: 选择搜索结果
+    description: 抖音搜索后选择并进入搜索结果第一条
+    affiliated_app: douyin
+    handler_class: operations.douyin.select_search_result.SelectSearchResultOperation
+    state_checks:
+      precondition:
+        page_type: search_results
+      postcondition: {}
+    parameters:
+      - name: tab
+        required: false
+        type: string
+        description: 搜索结果tab类型（视频、用户、商品、店铺），默认为视频
+    preconditions:
+      - 搜索结果页

@@ -1,0 +1,38 @@
+# 核心通用 Operations 配置
+
+operations:
+  - name: natural_language
+    display_name: 自然语言指令执行
+    description: 直接执行消息队列传来的自然语言指令，由Agent自主完成任务
+    affiliated_app: core
+    handler_class: operations.core.natural_language.NaturalLanguageOperation
+    parameters:
+      - name: prompt
+        required: true
+        type: string
+        description: 自然语言指令内容
+      - name: max_steps
+        required: false
+        type: integer
+        description: Agent最大执行步数，默认30
+    preconditions: []
+
+  - name: wake_screen
+    display_name: 唤醒屏幕
+    description: 唤醒息屏设备并滑动解锁，适用于无密码/PIN的设备。屏幕已亮时自动跳过
+    affiliated_app: core
+    handler_class: operations.core.wake_screen.WakeScreenOperation
+    parameters: []
+    preconditions: []
+
+  - name: observe_screen
+    display_name: 观察当前界面状态
+    description: 获取当前界面的截图URL和可选的UI层级结构(XML)，用于状态观察和分析
+    affiliated_app: core
+    handler_class: operations.core.observe_screen.ObserveScreenOperation
+    parameters:
+      - name: include_xml
+        required: false
+        type: boolean
+        description: 是否包含UI层级结构XML，默认false（XML较大，按需获取）
+    preconditions: []
