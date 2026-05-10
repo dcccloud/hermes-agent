@@ -56,4 +56,4 @@ if [ -n "$DEVICE_ID" ]; then
 fi
 
 cd "$PYTHON_DIR"
-exec "$VENV_PY" server.py "${ARGS[@]}"
+exec "$VENV_PY" server.py ${ARGS[@]+"${ARGS[@]}"}

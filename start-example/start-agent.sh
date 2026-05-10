@@ -40,4 +40,6 @@ if [ -n "${NURTURE_NO_COMMUNITY:-}" ]; then
     ARGS+=("--no-community")
 fi
 
-exec "$VENV_PY" plugins/nurture/scripts/serve.py "${ARGS[@]}"
+# Note the ${ARGS[@]+...} guard — bash 3.x (macOS default) treats an
+# empty array as "unset" under `set -u`, which would crash here.
+exec "$VENV_PY" plugins/nurture/scripts/serve.py ${ARGS[@]+"${ARGS[@]}"}
