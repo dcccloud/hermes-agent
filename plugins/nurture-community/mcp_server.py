@@ -42,8 +42,12 @@ def create_mcp_server(engine: KnowledgeEngine) -> Any:
             "pip install mcp"
         )
 
+    # streamable_http_path="/" so when this app is mounted under "/mcp"
+    # in the parent FastAPI, the public endpoint is `/mcp` (not the
+    # default `/mcp/mcp` from path doubling).
     mcp = FastMCP(
         "nurture-community",
+        streamable_http_path="/",
         instructions=(
             "Avatar-Hermes community knowledge engine. Query recipes, "
             "graph states, and events from the community of devices. "

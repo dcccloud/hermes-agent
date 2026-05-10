@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import jwt
@@ -82,17 +83,42 @@ def create_app(
     knowledge_engine: KnowledgeEngine,
     auth: JwtAuth,
     avatar_registry: AvatarRegistry,
+    mcp: Any = None,
 ) -> FastAPI:
     """Build the FastAPI app. The caller is responsible for running it
     via uvicorn (see ``__init__.py``).
+
+    If *mcp* (a FastMCP instance) is provided, its lifespan + streamable
+    HTTP transport are mounted at ``/mcp``. The MCP session manager's
+    task group requires the parent FastAPI's lifespan to wrap it —
+    that's what AsyncExitStack handles below.
     """
+
+    if mcp is not None:
+        @asynccontextmanager
+        async def lifespan(_app: FastAPI):
+            # FastMCP session manager needs to be started inside an async
+            # context. Its run() is an async context manager that wraps
+            # an anyio task group. Stack it inside our app lifespan so
+            # /mcp requests can find an initialised task group.
+            async with AsyncExitStack() as stack:
+                await stack.enter_async_context(mcp.session_manager.run())
+                yield
+        lifespan_arg = lifespan
+    else:
+        lifespan_arg = None
+
     app = FastAPI(
         title="Avatar-Hermes Community",
         description=(
             "REST endpoints for device-community sync. See "
             "docs/avatar-hermes/mcp-http-protocol.md for the protocol."
         ),
+        lifespan=lifespan_arg,
     )
+
+    if mcp is not None:
+        app.mount("/mcp", mcp.streamable_http_app())
 
     def _verify_token(authorization: str) -> TokenPayload:
         """Extract Bearer token from the Authorization header and verify it.
@@ -125,7 +151,30 @@ def create_app(
                 detail="Admin scope required",
             )
 
-    # -- health check (unauthenticated) -------------------------------------
+    # -- root + health (unauthenticated) ------------------------------------
+
+    @app.get("/")
+    async def root() -> Dict[str, Any]:
+        """Friendly root response. Without this, browsers / IDE probes
+        hitting :18790 see a generic "Not Found" — and any WS-upgrade
+        attempt at / produces the same 403 noise in the access log."""
+        return {
+            "service": "avatar-hermes-nurture-community",
+            "backend": "postgres" if knowledge_engine.is_pg else "json",
+            "endpoints": {
+                "health": "/api/health",
+                "register": "POST /api/avatar/register",
+                "upload": "POST /api/upload",
+                "tasks_poll": "GET /api/tasks/poll",
+                "advices_poll": "GET /api/advices/poll",
+                "directives_poll": "GET /api/directives/poll",
+                "task_complete": "POST /api/task/complete",
+                "recipes_get": "GET /api/recipes/{app}/{op}/{step}",
+                "graph_get": "GET /api/graph/{app}",
+                "mcp": "/mcp (Streamable HTTP)",
+            },
+            "docs": "https://github.com/dcccloud/hermes-agent/tree/main/docs/avatar-hermes",
+        }
 
     @app.get("/api/health")
     async def health() -> Dict[str, Any]:

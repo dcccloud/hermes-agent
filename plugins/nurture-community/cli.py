@@ -140,6 +140,22 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     )
     log = logging.getLogger("nurture-community.serve")
 
+    # Suppress known-and-expected uvicorn WebSocket noise. We disable WS
+    # at the protocol level (ws="none" below) because we have no WS
+    # endpoints; that means any local IDE / dev-tool probe upgrading at
+    # / produces these warnings. They're not actionable.
+    class _DropWsNoise(logging.Filter):
+        _NEEDLES = (
+            "Unsupported upgrade request",
+            "No supported WebSocket library detected",
+        )
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            return not any(needle in msg for needle in self._NEEDLES)
+
+    logging.getLogger("uvicorn.error").addFilter(_DropWsNoise())
+
     # Workspace + DB resolution mirrors plugins/nurture-community/__init__.py
     from hermes_constants import get_hermes_home
 
@@ -173,23 +189,33 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
     async def main() -> None:
         await engine.init()
-        app = create_app(
-            knowledge_engine=engine, auth=auth, avatar_registry=registry,
-        )
-        # Optional: mount MCP under /mcp
+
+        # Optional: build MCP server before the FastAPI app so its
+        # lifespan can be wrapped into the FastAPI lifespan.
+        mcp = None
         try:
             from .mcp_server import create_mcp_server
             mcp = create_mcp_server(engine)
-            app.mount("/mcp", mcp.streamable_http_app())
-            log.info("MCP server mounted at /mcp")
         except Exception as e:
             log.warning("MCP server unavailable: %s — REST endpoints still work", e)
+
+        app = create_app(
+            knowledge_engine=engine, auth=auth, avatar_registry=registry,
+            mcp=mcp,
+        )
+        if mcp is not None:
+            log.info("MCP server mounted at /mcp")
 
         import uvicorn
         config = uvicorn.Config(
             app=app,
             host=args.host, port=args.port,
             log_level=os.environ.get("NURTURE_LOG_LEVEL", "info").lower(),
+            # We don't expose any WebSocket route — MCP Streamable HTTP
+            # is HTTP+SSE, not WS. Disabling at the protocol level keeps
+            # the access log clean of "WebSocket / 403" noise from local
+            # IDE / dev-tool probes hitting the root.
+            ws="none",
         )
         server = uvicorn.Server(config)
 

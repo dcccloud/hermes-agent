@@ -111,20 +111,24 @@ def _start_server_thread(host: str, port: int) -> None:
             logger.exception("nurture-community: engine.init() failed")
             return
 
-        app = create_app(
-            knowledge_engine=engine, auth=auth, avatar_registry=registry,
-        )
-
-        # Mount MCP server under /mcp via Streamable HTTP transport.
+        # Build MCP server first so its lifespan can be wrapped into the
+        # FastAPI lifespan (otherwise streamable_http requests fail with
+        # "Task group is not initialized").
+        mcp = None
         try:
             mcp = create_mcp_server(engine)
-            app.mount("/mcp", mcp.streamable_http_app())
-            logger.info("nurture-community: MCP server mounted at /mcp")
         except Exception as e:
             logger.warning(
                 "nurture-community: MCP server unavailable (%s); REST endpoints still work",
                 e,
             )
+
+        app = create_app(
+            knowledge_engine=engine, auth=auth, avatar_registry=registry,
+            mcp=mcp,
+        )
+        if mcp is not None:
+            logger.info("nurture-community: MCP server mounted at /mcp")
 
         config = uvicorn.Config(
             app=app,
@@ -132,6 +136,8 @@ def _start_server_thread(host: str, port: int) -> None:
             port=port,
             log_level="info",
             loop="asyncio",
+            # No WebSocket routes — see cli.py _cmd_serve for rationale.
+            ws="none",
         )
         server = uvicorn.Server(config)
         _state["uvicorn_server"] = server
