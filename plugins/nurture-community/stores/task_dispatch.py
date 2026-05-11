@@ -104,10 +104,32 @@ def _parse_iso(s: str) -> float:
 class TaskDispatchEngine:
     def __init__(self, store_dir: Path):
         self._store_file = Path(store_dir) / "task-dispatch.json"
+        self._last_mtime: float = 0.0
+        self._tasks: List[TaskDispatch] = []
+        self._reload()
+
+    def _reload(self) -> None:
+        """Read the JSON file from disk + cache mtime."""
         raw = load_json(self._store_file, [])
-        self._tasks: List[TaskDispatch] = [
+        self._tasks = [
             TaskDispatch.from_dict(t) for t in raw if isinstance(t, dict)
         ]
+        try:
+            self._last_mtime = self._store_file.stat().st_mtime
+        except OSError:
+            self._last_mtime = 0.0
+
+    def _maybe_reload(self) -> None:
+        """Multi-process safety: re-read when another process (e.g.
+        ``hermes nurture-community tasks create`` via the CLI) wrote
+        the file. Cheap mtime stat; reload only on change.
+        """
+        try:
+            mtime = self._store_file.stat().st_mtime
+        except OSError:
+            return
+        if mtime > self._last_mtime:
+            self._reload()
 
     @property
     def all(self) -> Sequence[TaskDispatch]:
@@ -146,12 +168,14 @@ class TaskDispatchEngine:
         return task
 
     def get(self, task_id: str) -> Optional[TaskDispatch]:
+        self._maybe_reload()
         return next((t for t in self._tasks if t.taskId == task_id), None)
 
     def get_available(
         self, *, platform: Optional[str] = None, capabilities: Optional[List[str]] = None
     ) -> List[TaskDispatch]:
         """Return active, non-expired tasks matching the avatar."""
+        self._maybe_reload()
         now_s = now_ms() / 1000.0
         results: List[TaskDispatch] = []
         for t in self._tasks:
@@ -183,6 +207,7 @@ class TaskDispatchEngine:
         status: Optional[TaskStatus] = None,
         app: Optional[str] = None,
     ) -> List[TaskDispatch]:
+        self._maybe_reload()
         results = self._tasks
         if status:
             results = [t for t in results if t.status == status]

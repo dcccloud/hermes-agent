@@ -33,11 +33,51 @@ def register_cli(subparser: argparse.ArgumentParser) -> None:
 
     tasks_p = subs.add_parser("tasks", help="Community task management (admin)")
     tasks_subs = tasks_p.add_subparsers(dest="tasks_subcommand")
-    tasks_subs.add_parser("list")
-    create_p = tasks_subs.add_parser("create")
-    create_p.add_argument("--app", required=True)
-    create_p.add_argument("--description", required=True)
-    create_p.add_argument("--priority", default="normal", choices=("normal", "high"))
+
+    list_t = tasks_subs.add_parser("list", help="List tasks")
+    list_t.add_argument(
+        "--status", default=None,
+        choices=("active", "completed", "expired"),
+        help="Filter by status",
+    )
+    list_t.add_argument("--app", default=None, help="Filter by app")
+    list_t.add_argument("--json", action="store_true", help="Output JSON")
+
+    create_p = tasks_subs.add_parser("create", help="Publish a new task")
+    create_p.add_argument("--app", required=True, help="Target app (e.g. douyin)")
+    create_p.add_argument(
+        "--description", required=True,
+        help="Plain-text instruction the worker LLM will see",
+    )
+    create_p.add_argument(
+        "--priority", default="normal", choices=("normal", "high"),
+    )
+    create_p.add_argument(
+        "--expires", default=None,
+        help="ISO8601 expiry; defaults to 1h from now",
+    )
+    create_p.add_argument(
+        "--platform", action="append", default=None,
+        help="Platform requirement (repeatable). Default: any.",
+    )
+    create_p.add_argument(
+        "--require-cap", action="append", default=None,
+        help="Required capability id (repeatable). e.g. --require-cap douyin.give_a_like",
+    )
+
+    show_p = tasks_subs.add_parser("show", help="Show one task by id")
+    show_p.add_argument("task_id")
+
+    complete_p = tasks_subs.add_parser(
+        "complete",
+        help="Manually mark a task completed (admin override)",
+    )
+    complete_p.add_argument("task_id")
+
+    cleanup_p = tasks_subs.add_parser(
+        "cleanup",
+        help="Mark expired tasks + drop very old non-active tasks",
+    )
 
     serve_p = subs.add_parser(
         "serve",
@@ -94,8 +134,7 @@ def community_command(args: argparse.Namespace) -> int:
         print("nurture-community recipes: not yet implemented (Phase 2)")
         return 1
     if cmd == "tasks":
-        print("nurture-community tasks: not yet implemented (Phase 2-3)")
-        return 1
+        return _cmd_tasks(args)
     if cmd == "serve":
         return _cmd_serve(args)
     if cmd == "analyze":
@@ -114,6 +153,125 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print("  KnowledgeEngine: not yet initialised (Phase 2)")
     print("  MCP server:      not yet exposed (Phase 3)")
     return 0
+
+
+def _cmd_tasks(args: argparse.Namespace) -> int:
+    """Admin task management — create / list / show / complete / cleanup.
+
+    Runs in-process against the JSON / PG backend (no HTTP). When the
+    community server is also running on this machine, both share the
+    same backend so a CLI-created task is immediately visible to agent
+    polls. (For a remote operator, use the equivalent REST endpoint —
+    Phase 3+ scope.)
+    """
+    import asyncio
+    import json as _json
+
+    sub = getattr(args, "tasks_subcommand", None)
+    if sub is None:
+        print("hermes nurture-community tasks: missing subcommand")
+        print("Try: tasks list | tasks create | tasks show | tasks complete | tasks cleanup")
+        return 2
+
+    engine = _build_standalone_engine()
+    if engine is None:
+        print("nurture-community tasks: cannot reach KnowledgeEngine")
+        return 1
+
+    async def run() -> int:
+        await engine.init()
+
+        if sub == "list":
+            if engine.is_pg:
+                tasks_list = await engine.task_dispatch.query()
+            else:
+                tasks_list = engine.task_dispatch.query()
+            if args.status:
+                tasks_list = [t for t in tasks_list if t.status == args.status]
+            if args.app:
+                tasks_list = [t for t in tasks_list if t.app == args.app]
+            if args.json:
+                print(_json.dumps(
+                    [t.to_dict() for t in tasks_list],
+                    indent=2, ensure_ascii=False,
+                ))
+            else:
+                if not tasks_list:
+                    print("(no tasks)")
+                    return 0
+                print(f"{'TASK ID':40s}  {'STATUS':10s}  {'APP':12s}  {'PRIORITY':8s}  DESCRIPTION")
+                for t in tasks_list:
+                    desc = t.description[:60]
+                    print(f"{t.taskId:40s}  {t.status:10s}  {t.app:12s}  {t.priority:8s}  {desc}")
+            return 0
+
+        if sub == "create":
+            from .stores.task_dispatch import TaskRequirements
+            requirements = TaskRequirements(
+                app=args.app,
+                platform=list(args.platform or []),
+                minCapabilities=list(args.require_cap or []),
+            )
+            task = await engine.create_task(
+                requirements=requirements,
+                app=args.app,
+                description=args.description,
+                priority=args.priority,
+                expires_at=args.expires,
+            )
+            print(f"✓ created task {task.taskId}")
+            print(f"  app:         {task.app}")
+            print(f"  description: {task.description}")
+            print(f"  priority:    {task.priority}")
+            print(f"  expires_at:  {task.expiresAt}")
+            print()
+            print("Agents matching this task's requirements will pick it up on")
+            print("their next /api/tasks/poll tick (default cadence: 30s).")
+            return 0
+
+        if sub == "show":
+            if engine.is_pg:
+                task = await engine.task_dispatch.get(args.task_id)
+            else:
+                task = engine.task_dispatch.get(args.task_id)
+            if task is None:
+                print(f"task {args.task_id!r} not found")
+                return 1
+            print(_json.dumps(task.to_dict(), indent=2, ensure_ascii=False))
+            return 0
+
+        if sub == "complete":
+            if engine.is_pg:
+                task = await engine.task_dispatch.complete(args.task_id)
+            else:
+                task = engine.task_dispatch.complete(args.task_id)
+            if task is None:
+                print(f"task {args.task_id!r} not found or not active")
+                return 1
+            print(f"✓ task {args.task_id} marked completed")
+            return 0
+
+        if sub == "cleanup":
+            if engine.is_pg:
+                expired = await engine.task_dispatch.clean_expired()
+                pruned = await engine.task_dispatch.prune()
+            else:
+                expired = engine.task_dispatch.clean_expired()
+                pruned = engine.task_dispatch.prune()
+            print(f"  expired: {expired}")
+            print(f"  pruned:  {pruned}")
+            return 0
+
+        print(f"unknown tasks subcommand: {sub!r}")
+        return 2
+
+    try:
+        return asyncio.run(run())
+    finally:
+        try:
+            asyncio.run(engine.close())
+        except Exception:
+            pass
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
